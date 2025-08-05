@@ -1,4 +1,6 @@
 class Departamento:
+    # Representa un departamento del museo.
+    
     def __init__(self, department_id, display_name):
         self.id = department_id
         self.nombre = display_name

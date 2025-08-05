@@ -6,6 +6,9 @@ from departamento import *
 from obra import *
 
 class MetroArtApp:
+
+    # Aplicación para explorar obras del Museo Metropolitano de Nueva York (Met).
+
     API_URL = "https://collectionapi.metmuseum.org/public/collection/v1"
 
     def _limpiar_pantalla(self):
@@ -22,6 +25,9 @@ class MetroArtApp:
         return input("Seleccione una opción: ")
 
     def _obtener_datos_api(self, endpoint, params=None):
+
+        # Realiza una solicitud GET a la API del Met.
+
         url = f"{self.API_URL}/{endpoint}"
         try:
             response = requests.get(url, params=params)
@@ -35,11 +41,17 @@ class MetroArtApp:
             return {}
 
     def obtener_departamentos(self):
+
+        #Obtiene la lista de departamentos disponibles desde la API.
+
         data = self._obtener_datos_api("departments")
         departamentos_json = data.get("departments", [])
         return [Departamento.from_json(dep) for dep in departamentos_json]
 
     def obtener_obras_por_departamento(self, departamento_id):
+
+         # Busca obras asociadas a un departamento específico.
+         
         params = {"departmentId": departamento_id, "q": "art"}
         search_results = self._obtener_datos_api("search", params=params)
 

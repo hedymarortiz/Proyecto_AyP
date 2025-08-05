@@ -1,4 +1,6 @@
 class Obra:
+    # Representa una obra de arte.
+    
     def __init__(self, object_id, titulo, artista):
         self.id = object_id
         self.titulo = titulo
