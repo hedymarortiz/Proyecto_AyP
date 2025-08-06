@@ -12,4 +12,6 @@ class Obra:
             data.get('objectID', 'N/A'),
             data.get('title', 'Sin título'),
             data.get('artistDisplayName', 'Desconocido')
+            data.get('artistDisplayName', 'Desconocido')
+
         )
