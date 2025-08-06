@@ -162,3 +162,86 @@ class MetroArtApp:
 if __name__ == "__main__":
     app = MetroArtApp()
     app.run()
+
+    def obtener_nacionalidades_disponibles(self, obras):
+        nacionalidades = set()
+        for obra in obras:
+            if obra.nacionalidad:
+                nacionalidad = obra.nacionalidad.strip().title()
+                if nacionalidad:
+                    nacionalidades.add(nacionalidad)
+        return sorted(nacionalidades)
+
+def obtener_obras_por_nacionalidad(self, nacionalidad):
+    search_results = self._obtener_datos_api("search", params={"q": "art"})
+    object_ids = search_results.get("objectIDs", []) or []
+    obras = []
+    
+    for obj_id in object_ids[:100]:  
+        obj_data = self._obtener_datos_api(f"objects/{obj_id}")
+        if obj_data and obj_data.get('artistNationality'):
+            obra = Obra.from_json(obj_data)
+            if obra.nacionalidad and nacionalidad.lower() in obra.nacionalidad.lower():
+                obras.append(obra)
+    
+    return obras
+
+def buscar_obras_por_nacionalidad(self):
+    self._limpiar_pantalla()
+    print("=" * 55)
+    print("   MetroArt - Búsqueda por Nacionalidad del Autor   ")
+    print("=" * 55)
+    
+    print("Cargando nacionalidades disponibles...")
+    obras_muestra, _ = self.obtener_obras_por_departamento(1) 
+    nacionalidades = self.obtener_nacionalidades_disponibles(obras_muestra)
+    
+    if not nacionalidades:
+        print("No se pudieron cargar las nacionalidades.")
+        input("Presione Enter para continuar...")
+        return
+    
+    print("\nNacionalidades disponibles:\n")
+    for idx, nacionalidad in enumerate(nacionalidades):
+        print(f"{idx + 1}. {nacionalidad}")
+    
+    while True:
+        try:
+            opcion = input("\nSeleccione el número de la nacionalidad, '0' para volver o 'B' para buscar: ")
+            
+            if opcion == '0':
+                return
+            elif opcion.lower() == 'b':
+                nacionalidad_buscar = input("Ingrese la nacionalidad a buscar: ").strip()
+                if not nacionalidad_buscar:
+                    print("Debe ingresar una nacionalidad.")
+                    continue
+            else:
+                indice = int(opcion) - 1
+                if 0 <= indice < len(nacionalidades):
+                    nacionalidad_buscar = nacionalidades[indice]
+                else:
+                    print("Número fuera de rango.")
+                    continue
+            
+            print(f"\nBuscando obras de artistas {nacionalidad_buscar}...\n")
+            obras = self.obtener_obras_por_nacionalidad(nacionalidad_buscar)
+            
+            if not obras:
+                print(f"No se encontraron obras de artistas {nacionalidad_buscar}.")
+            else:
+                print(f"Se encontraron {len(obras)} obras:\n")
+                for obra in obras[:10]:  
+                    print(f"ID Obra: {obra.id}")
+                    print(f"Título: {obra.titulo}")
+                    print(f"Autor: {obra.artista}")
+                    print(f"Nacionalidad: {obra.nacionalidad}")
+                    print("---")
+                if len(obras) > 10:
+                    print(f"... Se omitieron {len(obras) - 10} obras restantes.")
+            
+            input("\nPresione Enter para continuar...")
+            break
+            
+        except ValueError:
+            print("Entrada inválida. Intente de nuevo.")
