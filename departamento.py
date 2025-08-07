@@ -6,5 +6,6 @@ class Departamento:
         self.nombre = display_name
 
     
+    @staticmethod
     def from_json(data):
         return Departamento(data["departmentId"], data["displayName"])

@@ -8,11 +8,13 @@ class Obra:
         self.nacionalidad = nacionalidad
 
     
+    @staticmethod
     def from_json(data):
         return Obra(
             data.get('objectID', 'N/A'),
             data.get('title', 'Sin título'),
-            data.get('artistDisplayName', 'Desconocido')
+            data.get('artistDisplayName', 'Desconocido'),
+            data.get('artistNationality', 'Desconocida')
         )
     
 
