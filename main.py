@@ -2,19 +2,46 @@ import os
 import requests
 import json
 
+from PIL import Image
 from departamento import *
 from obra import *
+from nacionalidad import Nacionalidades
+
+
+def guardar_imagen_desde_url(url, nombre_archivo):
+    """
+    Descarga una imagen desde una URL y la guarda en disco.
+    Retorna la ruta del archivo guardado o None si falla.
+    """
+    try:
+        resp = requests.get(url, stream=True)
+        resp.raise_for_status()
+        content_type = resp.headers.get('Content-Type', '')
+        extension = '.png'
+        if 'image/jpeg' in content_type:
+            extension = '.jpg'
+        elif 'image/svg+xml' in content_type:
+            extension = '.svg'
+        nombre_archivo_final = f"{nombre_archivo}{extension}"
+        with open(nombre_archivo_final, 'wb') as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return nombre_archivo_final
+    except Exception:
+        return None
+
 
 class MetroArtApp:
-
-    # Aplicación para explorar obras del Museo Metropolitano de Nueva York (Met).
+    """Aplicación para explorar obras del Museo Metropolitano de Nueva York (Met)."""
 
     API_URL = "https://collectionapi.metmuseum.org/public/collection/v1"
 
     def _limpiar_pantalla(self):
+        """Limpia la pantalla de la consola."""
         os.system('cls' if os.name == 'nt' else 'clear')
 
     def _mostrar_menu(self, title, options):
+        """Muestra un menú con título y opciones, y retorna la opción elegida."""
         self._limpiar_pantalla()
         print("=" * 35)
         print(f"   {title}   ")
@@ -25,54 +52,61 @@ class MetroArtApp:
         return input("Seleccione una opción: ")
 
     def _obtener_datos_api(self, endpoint, params=None):
-
-        # Realiza una solicitud GET a la API del Met.
-
+        """
+        Realiza una solicitud GET a la API del Met y retorna los datos en formato JSON.
+        Si ocurre un error, retorna un diccionario vacío.
+        """
         url = f"{self.API_URL}/{endpoint}"
         try:
             response = requests.get(url, params=params)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"Error al conectar con la API ({endpoint}): {e}")
-            return {}
-        except json.JSONDecodeError:
-            print(f"Error al decodificar la respuesta JSON de {endpoint}.")
+        except (requests.exceptions.RequestException, json.JSONDecodeError):
             return {}
 
     def obtener_departamentos(self):
-
-        #Obtiene la lista de departamentos disponibles desde la API.
-
+        """Obtiene la lista de departamentos disponibles desde la API."""
         data = self._obtener_datos_api("departments")
         departamentos_json = data.get("departments", [])
         return [Departamento.from_json(dep) for dep in departamentos_json]
 
     def obtener_obras_por_departamento(self, departamento_id):
-
-         # Busca obras asociadas a un departamento específico.
-         
+        """Busca obras asociadas a un departamento específico."""
         params = {"departmentId": departamento_id, "q": "art"}
         search_results = self._obtener_datos_api("search", params=params)
-
         object_ids = search_results.get("objectIDs", []) or []
         obras = []
+        errores_api = 0
+        limite_obras = 200
+        print(f"Cargando las primeras obras. Esto puede tardar unos segundos...")
 
-        for obj_id in object_ids[:10]:
-            obj_data = self._obtener_datos_api(f"objects/{obj_id}")
-            if obj_data:
+        for i, obj_id in enumerate(object_ids[:limite_obras]):
+            try:
+                if (i + 1) % 5 == 0:
+                    print(".", end="", flush=True)
+                obj_data = self._obtener_datos_api(f"objects/{obj_id}")
+                if not obj_data:
+                    errores_api += 1
+                    continue
                 obras.append(Obra.from_json(obj_data))
+            except Exception:
+                errores_api += 1
+                continue
+
+        print("\n")
+        if errores_api > 0:
+            print(f"(Se omitieron {errores_api} obras por problemas de conexión con la API)")
 
         return obras, search_results.get("total", 0)
 
     def buscar_obras_por_departamento(self):
+        """Muestra una lista de departamentos y permite buscar obras por el seleccionado."""
         self._limpiar_pantalla()
         print("=" * 47)
         print("   MetroArt - Búsqueda por Departamento de Obra   ")
         print("=" * 47)
 
         departamentos = self.obtener_departamentos()
-
         if not departamentos:
             print("No se pudieron cargar los departamentos.")
             input("Presione Enter para continuar...")
@@ -97,22 +131,255 @@ class MetroArtApp:
 
         print(f"\nBuscando obras en el departamento: {departamento.nombre}...\n")
         obras, total = self.obtener_obras_por_departamento(departamento.id)
-
         if not obras:
             print("No se encontraron obras.")
-        else:
-            print(f"Se encontraron {len(obras)} de {total} obras (mostrando hasta 10):\n")
-            for obra in obras:
+            input("Presione Enter para continuar...")
+            return
+
+        print(f"Se encontraron {len(obras)} de {total} obras:\n")
+        pagina = 0
+        while True:
+            self._limpiar_pantalla()
+            print(f"Obras del departamento {departamento.nombre} (página {pagina+1}/{(len(obras)-1)//10+1})\n")
+            for obra in obras[pagina*10:(pagina+1)*10]:
                 print(f"ID Obra: {obra.id}")
                 print(f"Título: {obra.titulo}")
                 print(f"Autor: {obra.artista}")
                 print("---")
-            if total > len(obras):
-                print(f"... Se omitieron {total - len(obras)} obras restantes.")
+            print("N: Siguiente página | P: Página anterior | 0: Salir")
+            opcion = input("Opción: ").strip().lower()
+            if opcion == 'n' and (pagina+1)*10 < len(obras):
+                pagina += 1
+            elif opcion == 'p' and pagina > 0:
+                pagina -= 1
+            elif opcion == '0':
+                break
+            else:
+                print("Opción inválida.")
+                input("Presione Enter para continuar...")
 
-        input("\nPresione Enter para continuar...")
+    def obtener_nacionalidades_disponibles(self, obras):
+        """Devuelve una lista ordenada de nacionalidades presentes en las obras dadas."""
+        nacionalidades = set()
+        for obra in obras:
+            if hasattr(obra, 'nacionalidad') and obra.nacionalidad:
+                nacionalidad = obra.nacionalidad.strip().title()
+                if nacionalidad:
+                    nacionalidades.add(nacionalidad)
+        return sorted(nacionalidades)
+
+    def obtener_obras_por_nacionalidad(self, nacionalidad):
+        """Obtiene obras destacadas filtradas por nacionalidad del artista."""
+        search_results = self._obtener_datos_api("search", params={"q": "art", "isHighlight": True})
+        object_ids = search_results.get("objectIDs", []) or []
+        obras = []
+        errores_api = 0
+        for obj_id in object_ids[:30]:
+            try:
+                obj_data = self._obtener_datos_api(f"objects/{obj_id}")
+                if not obj_data:
+                    errores_api += 1
+                    continue
+                if obj_data.get('artistNationality'):
+                    obra = Obra.from_json(obj_data)
+                    if obra.nacionalidad and nacionalidad.lower() in obra.nacionalidad.lower():
+                        obras.append(obra)
+            except Exception:
+                errores_api += 1
+                continue
+        if errores_api > 0:
+            print(f"(Se omitieron {errores_api} obras por problemas de conexión con la API)")
+        return obras
+
+    def buscar_obras_por_nacionalidad(self):
+        """Muestra la lista de nacionalidades y permite buscar obras según la elegida."""
+        self._limpiar_pantalla()
+        print("=" * 55)
+        print("   MetroArt - Búsqueda por Nacionalidad del Autor   ")
+        print("=" * 55)
+
+        items_por_pagina = 15
+        pagina_actual = 0
+        total_paginas = (len(Nacionalidades) + items_por_pagina - 1) // items_por_pagina
+
+        while True:
+            inicio = pagina_actual * items_por_pagina
+            fin = inicio + items_por_pagina
+            nacionalidades_pagina = Nacionalidades[inicio:fin]
+
+            print(f"\nNacionalidades disponibles (Página {pagina_actual + 1}/{total_paginas}):\n")
+            for idx, nacionalidad in enumerate(nacionalidades_pagina, start=1):
+                print(f"{idx:2d}. {nacionalidad}")
+
+            print("\nOpciones:")
+            print(" [1-15] Seleccionar nacionalidad")
+            print(" N - Página siguiente")
+            print(" P - Página anterior")
+            print(" B - Buscar por texto")
+            print(" 0 - Volver al menú")
+
+            opcion = input("\nSeleccione una opción: ").strip().lower()
+            if opcion == '0':
+                return
+            elif opcion == 'n' and pagina_actual < total_paginas - 1:
+                pagina_actual += 1
+                self._limpiar_pantalla()
+                continue
+            elif opcion == 'p' and pagina_actual > 0:
+                pagina_actual -= 1
+                self._limpiar_pantalla()
+                continue
+            elif opcion == 'b':
+                nacionalidad_buscar = input("Ingrese la nacionalidad a buscar: ").strip()
+                if nacionalidad_buscar:
+                    self._mostrar_resultados_nacionalidad(nacionalidad_buscar)
+                continue
+            else:
+                try:
+                    seleccion = int(opcion) - 1
+                    if 0 <= seleccion < len(nacionalidades_pagina):
+                        self._mostrar_resultados_nacionalidad(nacionalidades_pagina[seleccion])
+                    else:
+                        print("¡Número fuera de rango!")
+                        input("Presione Enter para continuar...")
+                except ValueError:
+                    print("¡Opción no válida!")
+                    input("Presione Enter para continuar...")
+
+            self._limpiar_pantalla()
+
+    def _mostrar_resultados_nacionalidad(self, nacionalidad):
+        """Muestra los resultados paginados de obras filtradas por nacionalidad."""
+        print(f"\nBuscando obras de artistas {nacionalidad}...")
+        obras = self.obtener_obras_por_nacionalidad(nacionalidad)
+        if not obras:
+            print(f"\nNo se encontraron obras de artistas {nacionalidad}.")
+            input("Presione Enter para continuar...")
+            return
+
+        pagina = 0
+        total_paginas = (len(obras) + 4) // 5
+        while True:
+            self._limpiar_pantalla()
+            print("=" * 55)
+            print(f"Obras de artistas {nacionalidad} (Página {pagina+1}/{total_paginas})")
+            print("=" * 55)
+            for obra in obras[pagina*5: (pagina+1)*5]:
+                print(f"\nID Obra: {obra.id}")
+                print(f"Título: {obra.titulo}")
+                print(f"Autor: {obra.artista}")
+                print(f"Nacionalidad: {obra.nacionalidad}")
+                print("-" * 30)
+            print("\nOpciones:")
+            print(" N - Página siguiente" if (pagina+1)*5 < len(obras) else "")
+            print(" P - Página anterior" if pagina > 0 else "")
+            print(" 0 - Volver al listado de nacionalidades")
+
+            opcion = input("\nSelección: ").strip().lower()
+            if opcion == 'n' and (pagina+1)*5 < len(obras):
+                pagina += 1
+            elif opcion == 'p' and pagina > 0:
+                pagina -= 1
+            elif opcion == '0':
+                break
+            else:
+                print("Opción no válida")
+                input("Presione Enter para continuar...")
+
+    def buscar_obras_por_autor(self):
+        """Permite buscar obras filtrando por nombre del autor."""
+        self._limpiar_pantalla()
+        print("=" * 55)
+        print("   MetroArt - Búsqueda por Nombre del Autor   ")
+        print("=" * 55)
+        nombre_autor = input("Ingrese el nombre del autor a buscar: ").strip()
+        if not nombre_autor:
+            print("Debe ingresar un nombre de autor.")
+            input("Presione Enter para continuar...")
+            return
+        print(f"\nBuscando obras de {nombre_autor}...\n")
+        obras = self.obtener_obras_por_autor(nombre_autor)
+        if not obras:
+            print(f"No se encontraron obras de {nombre_autor}.")
+            input("Presione Enter para continuar...")
+            return
+
+        print(f"Se encontraron {len(obras)} obras:\n")
+        pagina = 0
+        while True:
+            self._limpiar_pantalla()
+            print(f"Obras de {nombre_autor} (página {pagina+1}/{(len(obras)-1)//10+1})\n")
+            for obra in obras[pagina*10:(pagina+1)*10]:
+                print(f"ID Obra: {obra.id}")
+                print(f"Título: {obra.titulo}")
+                print(f"Autor: {obra.artista}")
+                print("---")
+            print("N: Siguiente página | P: Página anterior | 0: Salir")
+            opcion = input("Opción: ").strip().lower()
+            if opcion == 'n' and (pagina+1)*10 < len(obras):
+                pagina += 1
+            elif opcion == 'p' and pagina > 0:
+                pagina -= 1
+            elif opcion == '0':
+                break
+            else:
+                print("Opción inválida.")
+                input("Presione Enter para continuar...")
+
+    def mostrar_detalles_de_una_obra(self):
+        """
+        Pide un ID de obra, obtiene sus detalles desde la API y los muestra.
+        Ofrece la opción de abrir la imagen en una ventana usando Pillow.
+        """
+        self._limpiar_pantalla()
+        print("=" * 39)
+        print("     MetroArt - Detalles de Obra     ")
+        print("=" * 39)
+
+        object_id = input("Ingrese el ID de la obra: ").strip()
+        if not object_id.isdigit():
+            print("El ID debe ser numérico.")
+            input("Presione Enter para continuar...")
+            return
+
+        print("\nConsultando detalles...\n")
+        data = self._obtener_datos_api(f"objects/{object_id}")
+        if not data:
+            print("No se encontraron datos para ese ID.")
+            input("Presione Enter para continuar...")
+            return
+
+        detalle = DetalleObra.from_json(data)
+        print(f"ID:            {detalle.id}")
+        print(f"Título:        {detalle.titulo}")
+        print(f"Nombre artista:{detalle.artista}")
+        print(f"Nacionalidad:  {detalle.nacionalidad}")
+        print(f"Nacimiento:    {detalle.nacimiento}")
+        print(f"Muerte:        {detalle.muerte}")
+        print(f"Tipo:          {detalle.clasificacion}")
+        print(f"Año creación:  {detalle.anio_creacion}")
+        print(f"URL imagen:    {detalle.url_imagen if detalle.url_imagen else 'No disponible'}")
+        print("-" * 39)
+
+        if detalle.url_imagen:
+            ver = input("¿Abrir la imagen en una ventana? (S/N): ").strip().lower()
+            if ver == 's':
+                ruta = guardar_imagen_desde_url(detalle.url_imagen, f"obra_{detalle.id}")
+                if ruta:
+                    try:
+                        Image.open(ruta).show()
+                        print(f"Imagen abierta: {ruta}")
+                    except Exception:
+                        print("No fue posible abrir la imagen descargada.")
+                else:
+                    print("No fue posible descargar la imagen.")
+        else:
+            print("Esta obra no tiene imagen disponible.")
+
+        input("\nPresione Enter para volver al menú...")
 
     def run(self):
+        """Ejecuta el menú principal de la aplicación."""
         while True:
             main_options = {
                 '1': "Búsqueda de obras",
@@ -133,24 +400,17 @@ class MetroArtApp:
 
                     if buscar_opcion == '1':
                         self.buscar_obras_por_departamento()
-                    elif buscar_opcion in ['2', '3']:
-                        self._limpiar_pantalla()
-                        print("=" * 35)
-                        print("         FALTA DESARROLLAR         ")
-                        print("=" * 35)
-                        input("Presione Enter para continuar...")
+                    elif buscar_opcion == '2':
+                        self.buscar_obras_por_nacionalidad()
+                    elif buscar_opcion == '3':
+                        self.buscar_obras_por_autor()
                     elif buscar_opcion == '0':
                         break
                     else:
                         print("Opción no válida. Intente de nuevo.")
                         input("Presione Enter para continuar...")
             elif opcion == '2':
-                self._limpiar_pantalla()
-                print("=" * 39)
-                print("     MetroArt - Detalles de Obra     ")
-                print("=" * 39)
-                print("FALTA DESARROLLAR")
-                input("Presione Enter para continuar...")
+                self.mostrar_detalles_de_una_obra()
             elif opcion == '0':
                 self._limpiar_pantalla()
                 print("Saliendo del sistema MetroArt. ¡Hasta luego!")
@@ -158,6 +418,7 @@ class MetroArtApp:
             else:
                 print("Opción no válida. Intente de nuevo.")
                 input("Presione Enter para continuar...")
+
 
 if __name__ == "__main__":
     app = MetroArtApp()
