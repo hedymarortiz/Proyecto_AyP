@@ -4,6 +4,7 @@ import json
 
 from departamento import *
 from obra import *
+from nacionalidad import Nacionalidades
 
 class MetroArtApp:
 
@@ -125,7 +126,7 @@ class MetroArtApp:
                 print("Opción inválida.")
                 input("Presione Enter para continuar...")
 
-     #Obtiene Nacionalidades           
+     #BUSQUEDA POR NACIONALIDADES     
     def obtener_nacionalidades_disponibles(self, obras):
         nacionalidades = set()
         for obra in obras:
@@ -135,7 +136,7 @@ class MetroArtApp:
                     nacionalidades.add(nacionalidad)
         return sorted(nacionalidades)
     
-    #Obtiene las obras utilizando nacionalidades
+
     def obtener_obras_por_nacionalidad(self, nacionalidad):
         search_results = self._obtener_datos_api("search", params={"q": "art"})
         object_ids = search_results.get("objectIDs", []) or []
@@ -157,101 +158,132 @@ class MetroArtApp:
         if errores_api > 0:
             print(f"(Se omitieron {errores_api} obras por problemas de conexión con la API)")
         return obras
-    #Busca obras por nacionalidad
-    def buscar_obras_por_nacionalidad(self):
-        self._limpiar_pantalla()
-        print("=" * 55)
-        print("   MetroArt - Búsqueda por Nacionalidad del Autor   ")
-        print("=" * 55)
-        print("Cargando nacionalidades disponibles...")
-        nacionalidades = set()
-        departamentos = self.obtener_departamentos()
-        for dep in departamentos:
-            obras_dep, _ = self.obtener_obras_por_departamento(dep.id)
-            for obra in obras_dep:
-                if hasattr(obra, 'nacionalidad') and obra.nacionalidad:
-                    nacionalidad = obra.nacionalidad.strip().title()
-                    if nacionalidad:
-                        nacionalidades.add(nacionalidad)
-        nacionalidades = sorted(nacionalidades)
-        if not nacionalidades:
-            print("No se pudieron cargar las nacionalidades.")
-            input("Presione Enter para continuar...")
-            return
-        print("\nNacionalidades disponibles:\n")
-        for idx, nacionalidad in enumerate(nacionalidades):
-            print(f"{idx + 1}. {nacionalidad}")
-        while True:
-            try:
-                opcion = input("\nSeleccione el número de la nacionalidad, '0' para volver o 'B' para buscar: ")
-                if opcion == '0':
-                    return
-                elif opcion.lower() == 'b':
-                    nacionalidad_buscar = input("Ingrese la nacionalidad a buscar: ").strip()
-                    if not nacionalidad_buscar:
-                        print("Debe ingresar una nacionalidad.")
-                        continue
-                else:
-                    indice = int(opcion) - 1
-                    if 0 <= indice < len(nacionalidades):
-                        nacionalidad_buscar = nacionalidades[indice]
-                    else:
-                        print("Número fuera de rango.")
-                        continue
-                print(f"\nBuscando obras de artistas {nacionalidad_buscar}...\n")
-                obras = self.obtener_obras_por_nacionalidad(nacionalidad_buscar)
-                if not obras:
-                    print(f"No se encontraron obras de artistas {nacionalidad_buscar}.")
-                    input("Presione Enter para continuar...")
-                    break
-                print(f"Se encontraron {len(obras)} obras:\n")
-                pagina = 0
-                while True:
-                    self._limpiar_pantalla()
-                    print(f"Obras de artistas {nacionalidad_buscar} (página {pagina+1}/{(len(obras)-1)//10+1})\n")
-                    for obra in obras[pagina*10:(pagina+1)*10]:
-                        print(f"ID Obra: {obra.id}")
-                        print(f"Título: {obra.titulo}")
-                        print(f"Autor: {obra.artista}")
-                        print(f"Nacionalidad: {obra.nacionalidad}")
-                        print("---")
-                    print("N: Siguiente página | P: Página anterior | 0: Salir")
-                    op_pag = input("Opción: ").strip().lower()
-                    if op_pag == 'n' and (pagina+1)*10 < len(obras):
-                        pagina += 1
-                    elif op_pag == 'p' and pagina > 0:
-                        pagina -= 1
-                    elif op_pag == '0':
-                        break
-                    else:
-                        print("Opción inválida.")
-                        input("Presione Enter para continuar...")
-                break
-            except ValueError:
-                print("Entrada inválida. Intente de nuevo.")
-
-    #Obtiene obras por autor
-    def obtener_obras_por_autor(self, nombre_autor):
-        search_results = self._obtener_datos_api("search", params={"q": nombre_autor})
+    
+    def obtener_obras_por_nacionalidad(self, nacionalidad):
+        search_results = self._obtener_datos_api("search", params={"q": "art", "isHighlight": True})
         object_ids = search_results.get("objectIDs", []) or []
         obras = []
         errores_api = 0
-        for obj_id in object_ids[:20]:  # Limita a 20 resultados
+        
+        for obj_id in object_ids[:30]:  # Aumentamos a 30 para más resultados
             try:
                 obj_data = self._obtener_datos_api(f"objects/{obj_id}")
                 if not obj_data:
                     errores_api += 1
                     continue
-                if obj_data.get('artistDisplayName'):
+                    
+                if obj_data.get('artistNationality'):
                     obra = Obra.from_json(obj_data)
-                    if obra.artista and nombre_autor.lower() in obra.artista.lower():
+                    if obra.nacionalidad and nacionalidad.lower() in obra.nacionalidad.lower():
                         obras.append(obra)
-            except Exception:
+            except Exception as e:
                 errores_api += 1
                 continue
+                
         if errores_api > 0:
             print(f"(Se omitieron {errores_api} obras por problemas de conexión con la API)")
         return obras
+
+    def buscar_obras_por_nacionalidad(self):
+        
+        self._limpiar_pantalla()
+        print("=" * 55)
+        print("   MetroArt - Búsqueda por Nacionalidad del Autor   ")
+        print("=" * 55)
+        
+        items_por_pagina = 15
+        pagina_actual = 0
+        total_paginas = (len(Nacionalidades) + items_por_pagina - 1) // items_por_pagina
+        
+        while True:
+            inicio = pagina_actual * items_por_pagina
+            fin = inicio + items_por_pagina
+            nacionalidades_pagina = Nacionalidades[inicio:fin]
+            
+            print(f"\nNacionalidades disponibles (Página {pagina_actual + 1}/{total_paginas}):\n")
+            for idx, nacionalidad in enumerate(nacionalidades_pagina, start=1):
+                print(f"{idx:2d}. {nacionalidad}")
+            
+            print("\nOpciones:")
+            print(" [1-15] Seleccionar nacionalidad")
+            print(" N - Página siguiente")
+            print(" P - Página anterior")
+            print(" B - Buscar por texto")
+            print(" 0 - Volver al menú")
+            
+            opcion = input("\nSeleccione una opción: ").strip().lower()
+            
+            if opcion == '0':
+                return
+            elif opcion == 'n' and pagina_actual < total_paginas - 1:
+                pagina_actual += 1
+                self._limpiar_pantalla()
+                continue
+            elif opcion == 'p' and pagina_actual > 0:
+                pagina_actual -= 1
+                self._limpiar_pantalla()
+                continue
+            elif opcion == 'b':
+                nacionalidad_buscar = input("Ingrese la nacionalidad a buscar: ").strip()
+                if nacionalidad_buscar:
+                    self._mostrar_resultados_nacionalidad(nacionalidad_buscar)
+                continue
+            else:
+                try:
+                    seleccion = int(opcion) - 1
+                    if 0 <= seleccion < len(nacionalidades_pagina):
+                        self._mostrar_resultados_nacionalidad(nacionalidades_pagina[seleccion])
+                    else:
+                        print("¡Número fuera de rango!")
+                        input("Presione Enter para continuar...")
+                except ValueError:
+                    print("¡Opción no válida!")
+                    input("Presione Enter para continuar...")
+            
+            self._limpiar_pantalla()
+
+    def _mostrar_resultados_nacionalidad(self, nacionalidad):
+        """Método nuevo que conserva tu sistema de paginación de resultados"""
+        print(f"\nBuscando obras de artistas {nacionalidad}...")
+        obras = self.obtener_obras_por_nacionalidad(nacionalidad)
+        
+        if not obras:
+            print(f"\nNo se encontraron obras de artistas {nacionalidad}.")
+            input("Presione Enter para continuar...")
+            return
+        
+        pagina = 0
+        total_paginas = (len(obras) + 4) // 5  # 5 obras por página
+        
+        while True:
+            self._limpiar_pantalla()
+            print("=" * 55)
+            print(f"Obras de artistas {nacionalidad} (Página {pagina+1}/{total_paginas})")
+            print("=" * 55)
+            
+            for obra in obras[pagina*5 : (pagina+1)*5]:
+                print(f"\nID Obra: {obra.id}")
+                print(f"Título: {obra.titulo}")
+                print(f"Autor: {obra.artista}")
+                print(f"Nacionalidad: {obra.nacionalidad}")
+                print("-" * 30)
+            
+            print("\nOpciones:")
+            print(" N - Página siguiente" if (pagina+1)*5 < len(obras) else "")
+            print(" P - Página anterior" if pagina > 0 else "")
+            print(" 0 - Volver al listado de nacionalidades")
+            
+            opcion = input("\nSelección: ").strip().lower()
+            
+            if opcion == 'n' and (pagina+1)*5 < len(obras):
+                pagina += 1
+            elif opcion == 'p' and pagina > 0:
+                pagina -= 1
+            elif opcion == '0':
+                break
+            else:
+                print("Opción no válida")
+                input("Presione Enter para continuar...")
     
     #Busca obras por autor
     def buscar_obras_por_autor(self):
