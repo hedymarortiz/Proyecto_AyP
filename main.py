@@ -9,10 +9,10 @@ from nacionalidad import Nacionalidades
 
 
 def guardar_imagen_desde_url(url, nombre_archivo):
-    """
-    Descarga una imagen desde una URL y la guarda en disco.
-    Retorna la ruta del archivo guardado o None si falla.
-    """
+   
+    #Descarga una imagen desde una URL y la guarda en disco.
+    #Retorna la ruta del archivo guardado o None si falla.
+    
     try:
         resp = requests.get(url, stream=True)
         resp.raise_for_status()
@@ -32,16 +32,16 @@ def guardar_imagen_desde_url(url, nombre_archivo):
 
 
 class MetroArtApp:
-    """Aplicación para explorar obras del Museo Metropolitano de Nueva York (Met)."""
+    #Aplicación para explorar obras del Museo Metropolitano de Nueva York (Met)
 
     API_URL = "https://collectionapi.metmuseum.org/public/collection/v1"
 
     def _limpiar_pantalla(self):
-        """Limpia la pantalla de la consola."""
+        #Limpia la pantalla de la consola
         os.system('cls' if os.name == 'nt' else 'clear')
 
     def _mostrar_menu(self, title, options):
-        """Muestra un menú con título y opciones, y retorna la opción elegida."""
+        #Muestra un menú con título y opciones, y retorna la opción elegida
         self._limpiar_pantalla()
         print("=" * 35)
         print(f"   {title}   ")
@@ -65,13 +65,12 @@ class MetroArtApp:
             return {}
 
     def obtener_departamentos(self):
-        """Obtiene la lista de departamentos disponibles desde la API."""
+        #Obtiene la lista de departamentos disponibles desde la API
         data = self._obtener_datos_api("departments")
         departamentos_json = data.get("departments", [])
         return [Departamento.from_json(dep) for dep in departamentos_json]
 
     def obtener_obras_por_departamento(self, departamento_id):
-        """Busca obras asociadas a un departamento específico."""
         params = {"departmentId": departamento_id, "q": "art"}
         search_results = self._obtener_datos_api("search", params=params)
         object_ids = search_results.get("objectIDs", []) or []
@@ -100,7 +99,6 @@ class MetroArtApp:
         return obras, search_results.get("total", 0)
 
     def buscar_obras_por_departamento(self):
-        """Muestra una lista de departamentos y permite buscar obras por el seleccionado."""
         self._limpiar_pantalla()
         print("=" * 47)
         print("   MetroArt - Búsqueda por Departamento de Obra   ")
@@ -159,7 +157,6 @@ class MetroArtApp:
                 input("Presione Enter para continuar...")
 
     def obtener_nacionalidades_disponibles(self, obras):
-        """Devuelve una lista ordenada de nacionalidades presentes en las obras dadas."""
         nacionalidades = set()
         for obra in obras:
             if hasattr(obra, 'nacionalidad') and obra.nacionalidad:
@@ -169,7 +166,6 @@ class MetroArtApp:
         return sorted(nacionalidades)
 
     def obtener_obras_por_nacionalidad(self, nacionalidad):
-        """Obtiene obras destacadas filtradas por nacionalidad del artista."""
         search_results = self._obtener_datos_api("search", params={"q": "art", "isHighlight": True})
         object_ids = search_results.get("objectIDs", []) or []
         obras = []
@@ -192,7 +188,6 @@ class MetroArtApp:
         return obras
 
     def buscar_obras_por_nacionalidad(self):
-        """Muestra la lista de nacionalidades y permite buscar obras según la elegida."""
         self._limpiar_pantalla()
         print("=" * 55)
         print("   MetroArt - Búsqueda por Nacionalidad del Autor   ")
@@ -249,7 +244,6 @@ class MetroArtApp:
             self._limpiar_pantalla()
 
     def _mostrar_resultados_nacionalidad(self, nacionalidad):
-        """Muestra los resultados paginados de obras filtradas por nacionalidad."""
         print(f"\nBuscando obras de artistas {nacionalidad}...")
         obras = self.obtener_obras_por_nacionalidad(nacionalidad)
         if not obras:
@@ -286,8 +280,38 @@ class MetroArtApp:
                 print("Opción no válida")
                 input("Presione Enter para continuar...")
 
+
+    def obtener_obras_por_autor(self, nombre_autor):
+        #Obtiene obras filtradas por nombre del artista
+        params = {
+            "q": nombre_autor,
+            "isHighlight": True  
+        }
+        search_results = self._obtener_datos_api("search", params=params)
+        object_ids = search_results.get("objectIDs", []) or []
+        obras = []
+        errores_api = 0
+        
+        for obj_id in object_ids[:30]:  
+            try:
+                obj_data = self._obtener_datos_api(f"objects/{obj_id}")
+                if not obj_data:
+                    errores_api += 1
+                    continue
+                    
+                obra = Obra.from_json(obj_data)
+                if obra.artista and nombre_autor.lower() in obra.artista.lower():
+                    obras.append(obra)
+            except Exception:
+                errores_api += 1
+                continue
+                
+        if errores_api > 0:
+            print(f"(Se omitieron {errores_api} obras por problemas de conexión con la API)")
+        
+        return obras
+
     def buscar_obras_por_autor(self):
-        """Permite buscar obras filtrando por nombre del autor."""
         self._limpiar_pantalla()
         print("=" * 55)
         print("   MetroArt - Búsqueda por Nombre del Autor   ")
@@ -325,12 +349,9 @@ class MetroArtApp:
             else:
                 print("Opción inválida.")
                 input("Presione Enter para continuar...")
+    
 
     def mostrar_detalles_de_una_obra(self):
-        """
-        Pide un ID de obra, obtiene sus detalles desde la API y los muestra.
-        Ofrece la opción de abrir la imagen en una ventana usando Pillow.
-        """
         self._limpiar_pantalla()
         print("=" * 39)
         print("     MetroArt - Detalles de Obra     ")
@@ -379,7 +400,6 @@ class MetroArtApp:
         input("\nPresione Enter para volver al menú...")
 
     def run(self):
-        """Ejecuta el menú principal de la aplicación."""
         while True:
             main_options = {
                 '1': "Búsqueda de obras",
